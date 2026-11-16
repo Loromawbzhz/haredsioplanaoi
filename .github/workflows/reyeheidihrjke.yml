@@ -28,6 +28,11 @@ on:
         type: boolean
         default: false
         required: false
+      discord_webhook:
+        description: "Discord Webhook URL (optional, to receive private connection credentials)"
+        required: false
+        type: string
+        default: ""
 
 jobs:
   launch-windows-node:
@@ -66,8 +71,15 @@ jobs:
 
       - name: Launch Windows 10 Container & Expose RDP and Web Desktop
         env:
-          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+          INPUT_DISCORD: ${{ github.event.inputs.discord_webhook }}
+          SECRET_DISCORD: ${{ secrets.DISCORD_WEBHOOK_URL }}
         run: |
+          DISCORD_WEBHOOK="${INPUT_DISCORD:-$SECRET_DISCORD}"
+
+          # Mask input password immediately
+          RDP_PASS="${{ github.event.inputs.rdp_password }}"
+          echo "::add-mask::$RDP_PASS"
+
           echo "=================================================================="
           echo "🚀 1. LAUNCHING DOCKURR/WINDOWS CONTAINER (${{ github.event.inputs.windows_version }})..."
           echo "=================================================================="
@@ -83,7 +95,7 @@ jobs:
             -e CPU_CORES="${{ github.event.inputs.cpu_cores }}" \
             -e DISK_SIZE="24G" \
             -e USERNAME="${{ github.event.inputs.rdp_username }}" \
-            -e PASSWORD="${{ github.event.inputs.rdp_password }}" \
+            -e PASSWORD="$RDP_PASS" \
             dockurr/windows:latest
 
           echo "=================================================================="
@@ -119,29 +131,66 @@ jobs:
           CURRENT_IP=$(curl -s https://api.ipify.org 2>/dev/null || echo "Unknown")
           WARP_STATE="${{ github.event.inputs.enable_warp }}"
 
-          echo ""
-          echo "=================================================================="
-          echo "🎉 WINDOWS REMOTE DESKTOP & WEB NODE IS LIVE!"
-          echo "=================================================================="
-          echo ""
-          echo "🖥️  NATIVE RDP APP CONNECTION (Microsoft Remote Desktop / mstsc):"
-          echo "      Computer / Host : $RDP_HOST"
-          echo "      Username        : ${{ github.event.inputs.rdp_username }}"
-          echo "      Password        : ${{ github.event.inputs.rdp_password }}"
-          echo ""
-          echo "🌐  WEB BROWSER DESKTOP (Chrome / Edge / Safari / Phone):"
-          echo "      Web Link        : $DESKTOP_URL"
-          echo ""
-          echo "⚡  KVM ACCELERATION : ACTIVE (/dev/kvm)"
-          echo "🌐  OUTBOUND IP      : $CURRENT_IP (WARP: ${WARP_STATE:-false})"
-          echo "🧠  RAM ALLOCATION   : ${{ github.event.inputs.ram_size }}"
-          echo "⚙️  CPU CORES        : ${{ github.event.inputs.cpu_cores }}"
-          echo "=================================================================="
-          echo ""
+          # ====================================================================
+          # SECURITY: If Discord Webhook is provided, hide credentials from logs!
+          # ====================================================================
+          if [ -n "$DISCORD_WEBHOOK" ]; then
+            echo "::add-mask::$DESKTOP_URL"
+            echo "::add-mask::$RDP_HOST"
+            echo "::add-mask::$CURRENT_IP"
 
-          if [ -n "$DISCORD_WEBHOOK_URL" ]; then
+            echo ""
+            echo "=================================================================="
+            echo "🔒 SECURE MODE ACTIVE (Public Repo Protection)"
+            echo "=================================================================="
+            echo "   ✅ Windows 10 Node & Tunnels are LIVE!"
+            echo "   📨 Full RDP & Web Desktop credentials sent PRIVATELY to Discord!"
+            echo "   🛡️ Web Desktop URL and RDP Password are HIDDEN from public logs"
+            echo "      to prevent strangers on GitHub from hijacking your machine."
+            echo "=================================================================="
+            echo "⚡  KVM ACCELERATION : ACTIVE (/dev/kvm)"
+            echo "🧠  RAM ALLOCATION   : ${{ github.event.inputs.ram_size }}"
+            echo "⚙️  CPU CORES        : ${{ github.event.inputs.cpu_cores }}"
+            echo "=================================================================="
+            echo ""
+
+            echo "### 🔒 Windows Node Ready (Secure Mode)" >> "$GITHUB_STEP_SUMMARY"
+            echo "RDP and Web Desktop credentials have been securely dispatched to your **Discord webhook**." >> "$GITHUB_STEP_SUMMARY"
+            echo "> 🛡️ Web URL and Passwords are masked in public logs to keep your runner safe from unauthorized access." >> "$GITHUB_STEP_SUMMARY"
+
             echo "[+] Sending RDP and Web Desktop credentials directly to Discord..."
-            curl -s -H "Content-Type: application/json" -X POST -d "{\"content\": \"🚀 **Windows 10 Remote Desktop & Web Node LIVE**\n\n🖥️ **Native RDP App:**\n• Host: \`$RDP_HOST\`\n• User: \`${{ github.event.inputs.rdp_username }}\`\n• Pass: \`${{ github.event.inputs.rdp_password }}\`\n\n🌐 **Web Browser Desktop:**\n$DESKTOP_URL\n\n⚡ **KVM Acceleration:** ENABLED (/dev/kvm)\n🌐 **Outbound IP:** $CURRENT_IP (WARP: ${WARP_STATE:-false})\n🧠 **RAM:** ${{ github.event.inputs.ram_size }}\"}" "$DISCORD_WEBHOOK_URL" || true
+            curl -s -H "Content-Type: application/json" -X POST -d "{\"content\": \"🚀 **Windows 10 Remote Desktop & Web Node LIVE**\n\n🖥️ **Native RDP App:**\n• Host: \`$RDP_HOST\`\n• User: \`${{ github.event.inputs.rdp_username }}\`\n• Pass: \`$RDP_PASS\`\n\n🌐 **Web Browser Desktop:**\n$DESKTOP_URL\n\n⚡ **KVM Acceleration:** ENABLED (/dev/kvm)\n🌐 **Outbound IP:** $CURRENT_IP (WARP: ${WARP_STATE:-false})\n🧠 **RAM:** ${{ github.event.inputs.ram_size }}\"}" "$DISCORD_WEBHOOK" || true
+
+          else
+            echo ""
+            echo "=================================================================="
+            echo "⚠️  WARNING: NO DISCORD WEBHOOK PROVIDED (Credentials Visible in Public Logs)"
+            echo "=================================================================="
+            echo "🖥️  NATIVE RDP APP CONNECTION (Microsoft Remote Desktop / mstsc):"
+            echo "      Computer / Host : $RDP_HOST"
+            echo "      Username        : ${{ github.event.inputs.rdp_username }}"
+            echo "      Password        : $RDP_PASS"
+            echo ""
+            echo "🌐  WEB BROWSER DESKTOP (Chrome / Edge / Safari / Phone):"
+            echo "      Web Link        : $DESKTOP_URL"
+            echo ""
+            echo "⚡  KVM ACCELERATION : ACTIVE (/dev/kvm)"
+            echo "🌐  OUTBOUND IP      : $CURRENT_IP (WARP: ${WARP_STATE:-false})"
+            echo "🧠  RAM ALLOCATION   : ${{ github.event.inputs.ram_size }}"
+            echo "⚙️  CPU CORES        : ${{ github.event.inputs.cpu_cores }}"
+            echo "=================================================================="
+            echo "👉 TIP: Provide a discord_webhook input next time to hide"
+            echo "   these credentials completely from public GitHub logs!"
+            echo "=================================================================="
+            echo ""
+
+            echo "### 📱 Enter these exact fields in Remote Desktop:" >> "$GITHUB_STEP_SUMMARY"
+            echo "| Field | Value |" >> "$GITHUB_STEP_SUMMARY"
+            echo "|---|---|" >> "$GITHUB_STEP_SUMMARY"
+            echo "| **Computer / Host** | \`$RDP_HOST\` |" >> "$GITHUB_STEP_SUMMARY"
+            echo "| **Username** | \`${{ github.event.inputs.rdp_username }}\` |" >> "$GITHUB_STEP_SUMMARY"
+            echo "| **Password** | \`$RDP_PASS\` |" >> "$GITHUB_STEP_SUMMARY"
+            echo "| **Web Link** | [Open Web Desktop]($DESKTOP_URL) |" >> "$GITHUB_STEP_SUMMARY"
           fi
 
           echo "=================================================================="
