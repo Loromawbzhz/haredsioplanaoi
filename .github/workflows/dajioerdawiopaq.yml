@@ -137,12 +137,13 @@ jobs:
           
           echo "====================================================="
           echo "🌌 DOCKER COMPOSE SHARED STACK ONLINE"
-          echo "🌐 Web UI: $WEB_URL"
-          echo "🎵 Stream Proxy: $TG_URL"
+          echo "🌐 Web UI (V2 React):  $WEB_URL/v2"
+          echo "🌐 Web UI (V1 Legacy): $WEB_URL"
+          echo "🎵 Stream Proxy:       $TG_URL"
           echo "====================================================="
           
           if [ -n "${{ secrets.DISCORD_WEBHOOK_URL }}" ]; then
-            curl -s -H "Content-Type: application/json" -X POST -d "{\"content\": \"🌌 **Docker Compose Shared Stack Online!**\n🌐 Web UI: $WEB_URL\n🎵 Stream Proxy: $TG_URL\"}" ${{ secrets.DISCORD_WEBHOOK_URL }}
+            curl -s -H "Content-Type: application/json" -X POST -d "{\"content\": \"🌌 **Docker Compose Shared Stack Online!**\n🌐 **Web UI (V2 React):** $WEB_URL/v2\n🌐 **Web UI (V1 Legacy):** $WEB_URL\n🎵 **Stream Proxy:** $TG_URL\"}" ${{ secrets.DISCORD_WEBHOOK_URL }}
           fi
 
       - name: 📜 Follow Live Container Logs (Keep-Alive)
