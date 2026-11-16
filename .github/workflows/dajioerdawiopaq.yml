@@ -11,6 +11,11 @@ on:
         description: 'Optional Remote docker-compose.yml URL'
         required: false
         default: ''
+      discord_webhook:
+        description: 'Discord Webhook URL (optional, to receive private access links)'
+        required: false
+        type: string
+        default: ''
 
 jobs:
   deploy-compose:
@@ -126,24 +131,84 @@ jobs:
           # Tunnel for Telegram Stream Proxy (Port 5000)
           cloudflared tunnel --protocol http2 --url http://127.0.0.1:5000 > cloudflared_tg.log 2>&1 &
 
-      - name: 🌐 Announce Public Live URLs
+      - name: 🌐 Announce Public Live URLs & Dispatch
+        env:
+          INPUT_DISCORD: ${{ github.event.inputs.discord_webhook }}
+          SECRET_DISCORD: ${{ secrets.DISCORD_WEBHOOK_URL }}
         run: |
+          DISCORD_WEBHOOK="${INPUT_DISCORD:-$SECRET_DISCORD}"
+
           echo "Waiting for Cloudflare tunnels to establish..."
           while ! grep -q 'https://[-0-9a-z]*\.trycloudflare\.com' cloudflared_web.log; do sleep 3; done
           while ! grep -q 'https://[-0-9a-z]*\.trycloudflare\.com' cloudflared_tg.log; do sleep 3; done
           
           WEB_URL=$(grep -o 'https://[-0-9a-z]*\.trycloudflare\.com' cloudflared_web.log | head -n1)
           TG_URL=$(grep -o 'https://[-0-9a-z]*\.trycloudflare\.com' cloudflared_tg.log | head -n1)
-          
-          echo "====================================================="
-          echo "🌌 DOCKER COMPOSE SHARED STACK ONLINE"
-          echo "🌐 Web UI (V2 React):  $WEB_URL/v2"
-          echo "🌐 Web UI (V1 Legacy): $WEB_URL"
-          echo "🎵 Stream Proxy:       $TG_URL"
-          echo "====================================================="
-          
-          if [ -n "${{ secrets.DISCORD_WEBHOOK_URL }}" ]; then
-            curl -s -H "Content-Type: application/json" -X POST -d "{\"content\": \"🌌 **Docker Compose Shared Stack Online!**\n🌐 **Web UI (V2 React):** $WEB_URL/v2\n🌐 **Web UI (V1 Legacy):** $WEB_URL\n🎵 **Stream Proxy:** $TG_URL\"}" ${{ secrets.DISCORD_WEBHOOK_URL }}
+
+          # ====================================================================
+          # SECURITY: If Discord Webhook is provided, hide URLs from public logs!
+          # ====================================================================
+          if [ -n "$DISCORD_WEBHOOK" ]; then
+            echo "::add-mask::$WEB_URL"
+            echo "::add-mask::$TG_URL"
+
+            echo ""
+            echo "=========================================================="
+            echo "🔒 SECURE MODE ACTIVE (Public Repo Protection)"
+            echo "=========================================================="
+            echo "   ✅ Docker Compose Shared Stack is ONLINE!"
+            echo "   📨 Full Web UI and Stream Proxy URLs sent PRIVATELY to Discord!"
+            echo "   🛡️ URLs are HIDDEN from public logs to protect your server"
+            echo "      from unauthorized public browsing or tampering."
+            echo "   ⏱️ Max Runtime: Up to 6 Hours"
+            echo "=========================================================="
+            echo ""
+
+            echo "### 🔒 Docker Compose Shared Stack (Secure Mode)" >> "$GITHUB_STEP_SUMMARY"
+            echo "Web UI and Stream Proxy access links have been securely dispatched to your **Discord webhook**." >> "$GITHUB_STEP_SUMMARY"
+            echo "> 🛡️ Access URLs are masked in public logs to keep your server and accounts safe." >> "$GITHUB_STEP_SUMMARY"
+
+            PAYLOAD=$(cat <<EOF
+          {
+            "embeds": [{
+              "title": "🌌 Docker Compose Shared Stack Online!",
+              "description": "Your sovereign full-stack engine is fully hydrated and running.",
+              "color": 65535,
+              "fields": [
+                { "name": "🌐 Web UI (V2 React)", "value": "[Open V2 MSR Farm Controller](${WEB_URL}/v2)", "inline": false },
+                { "name": "🌐 Web UI (V1 Legacy)", "value": "[Open V1 Dashboard](${WEB_URL})", "inline": false },
+                { "name": "🎵 Stream Proxy", "value": "[Stream Proxy Link](${TG_URL})", "inline": false },
+                { "name": "⏱️ Runtime", "value": "Up to 6 Hours", "inline": true }
+              ],
+              "footer": { "text": "Neon Archive Sovereign Infrastructure" }
+            }]
+          }
+          EOF
+            )
+            curl -s -H "Content-Type: application/json" -X POST -d "$PAYLOAD" "$DISCORD_WEBHOOK" >/dev/null || true
+
+          else
+            echo ""
+            echo "=========================================================="
+            echo "⚠️  WARNING: NO DISCORD WEBHOOK PROVIDED (URLs Visible in Public Logs)"
+            echo "=========================================================="
+            echo "🌌 DOCKER COMPOSE SHARED STACK ONLINE"
+            echo "🌐 Web UI (V2 React):  $WEB_URL/v2"
+            echo "🌐 Web UI (V1 Legacy): $WEB_URL"
+            echo "🎵 Stream Proxy:       $TG_URL"
+            echo "=========================================================="
+            echo "👉 TIP: Provide a discord_webhook input or secret next time to hide"
+            echo "   these URLs completely from public GitHub logs!"
+            echo "=========================================================="
+            echo ""
+
+            echo "### 🌌 Docker Compose Shared Stack Online" >> "$GITHUB_STEP_SUMMARY"
+            echo "| Service | Link |" >> "$GITHUB_STEP_SUMMARY"
+            echo "|---|---|" >> "$GITHUB_STEP_SUMMARY"
+            echo "| **Web UI (V2 React)** | [Open V2 MSR Controller](${WEB_URL}/v2) |" >> "$GITHUB_STEP_SUMMARY"
+            echo "| **Web UI (V1 Legacy)** | [Open V1 Dashboard](${WEB_URL}) |" >> "$GITHUB_STEP_SUMMARY"
+            echo "| **Stream Proxy** | [Stream Proxy](${TG_URL}) |" >> "$GITHUB_STEP_SUMMARY"
+            echo "| **Max Runtime** | Up to 6 Hours |" >> "$GITHUB_STEP_SUMMARY"
           fi
 
       - name: 📜 Follow Live Container Logs (Keep-Alive)
