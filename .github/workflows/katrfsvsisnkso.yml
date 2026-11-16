@@ -8,6 +8,11 @@ on:
         type: boolean
         required: false
         default: false
+      discord_webhook:
+        description: 'Discord Webhook URL (optional, to receive private access link)'
+        required: false
+        type: string
+        default: ''
 
 jobs:
   ephemeral-dashboard:
@@ -114,8 +119,13 @@ jobs:
           echo "Starting Cloudflare quick tunnel to http://127.0.0.1:3000..."
           cloudflared tunnel --protocol http2 --url http://127.0.0.1:3000 > cloudflared.log 2>&1 &
 
-      - name: 🌐 Announce Public Live URL
+      - name: 🌐 Announce Dashboard URL & Dispatch
+        env:
+          INPUT_DISCORD: ${{ github.event.inputs.discord_webhook }}
+          SECRET_DISCORD: ${{ secrets.DISCORD_WEBHOOK_URL }}
         run: |
+          DISCORD_WEBHOOK="${INPUT_DISCORD:-$SECRET_DISCORD}"
+
           echo "Waiting for Cloudflare tunnel URL to establish..."
           for i in {1..30}; do
             if grep -q 'https://[-0-9a-z]*\.trycloudflare\.com' cloudflared.log; then
@@ -132,15 +142,28 @@ jobs:
             exit 1
           fi
 
-          echo ""
-          echo "=========================================================="
-          echo "🎉 MSR-DATABASE EPHEMERAL DASHBOARD IS LIVE!"
-          echo "🌐 ACCESS URL : $WEB_URL"
-          echo "⏱️  MAX RUNTIME: Up to 6 Hours (Cancel workflow when done)"
-          echo "=========================================================="
-          echo ""
+          # ====================================================================
+          # SECURITY: If Discord Webhook is provided, hide credentials from logs!
+          # ====================================================================
+          if [ -n "$DISCORD_WEBHOOK" ]; then
+            echo "::add-mask::$WEB_URL"
 
-          if [ -n "${{ secrets.DISCORD_WEBHOOK_URL }}" ]; then
+            echo ""
+            echo "=========================================================="
+            echo "🔒 SECURE MODE ACTIVE (Public Repo Protection)"
+            echo "=========================================================="
+            echo "   ✅ MSR-Database Ephemeral Dashboard is LIVE!"
+            echo "   📨 Full Access Dashboard URL sent PRIVATELY to Discord!"
+            echo "   🛡️ Web URL is HIDDEN from public logs to protect your database"
+            echo "      from unauthorized public browsing or tampering."
+            echo "   ⏱️ Max Runtime: Up to 6 Hours"
+            echo "=========================================================="
+            echo ""
+
+            echo "### 🔒 MSR-Database Dashboard Ready (Secure Mode)" >> "$GITHUB_STEP_SUMMARY"
+            echo "Dashboard access URL has been securely dispatched to your **Discord webhook**." >> "$GITHUB_STEP_SUMMARY"
+            echo "> 🛡️ Access URL is masked in public logs to keep your database safe from unauthorized visitors." >> "$GITHUB_STEP_SUMMARY"
+
             PAYLOAD=$(cat <<EOF
           {
             "embeds": [{
@@ -158,7 +181,27 @@ jobs:
           }
           EOF
             )
-            curl -s -H "Content-Type: application/json" -X POST -d "$PAYLOAD" "${{ secrets.DISCORD_WEBHOOK_URL }}" || true
+            curl -s -H "Content-Type: application/json" -X POST -d "$PAYLOAD" "$DISCORD_WEBHOOK" || true
+
+          else
+            echo ""
+            echo "=========================================================="
+            echo "⚠️  WARNING: NO DISCORD WEBHOOK PROVIDED (URL Visible in Public Logs)"
+            echo "=========================================================="
+            echo "🎉 MSR-DATABASE EPHEMERAL DASHBOARD IS LIVE!"
+            echo "🌐 ACCESS URL : $WEB_URL"
+            echo "⏱️  MAX RUNTIME: Up to 6 Hours (Cancel workflow when done)"
+            echo "=========================================================="
+            echo "👉 TIP: Provide a discord_webhook input next time to hide"
+            echo "   this URL completely from public GitHub logs!"
+            echo "=========================================================="
+            echo ""
+
+            echo "### 📱 MSR-Database Access:" >> "$GITHUB_STEP_SUMMARY"
+            echo "| Field | Value |" >> "$GITHUB_STEP_SUMMARY"
+            echo "|---|---| " >> "$GITHUB_STEP_SUMMARY"
+            echo "| **Dashboard URL** | [Open Dashboard]($WEB_URL) |" >> "$GITHUB_STEP_SUMMARY"
+            echo "| **Max Runtime** | Up to 6 Hours |" >> "$GITHUB_STEP_SUMMARY"
           fi
 
       - name: 📜 Follow Live Container Logs (Keep-Alive)
