@@ -50,36 +50,64 @@ jobs:
           SSH_HOST=$(echo "$RAW_ADDR" | cut -d'@' -f2)
           SSH_PORT="22"
 
-          echo ""
-          echo "=========================================================="
-          echo "🚀 TERMIUS CONNECTION DETAILS"
-          echo "=========================================================="
-          echo "   Hostname / IP: $SSH_HOST"
-          echo "   Port:          $SSH_PORT"
-          echo "   Username:      $SSH_USER"
-          echo "   Password:      (Leave Empty)"
-          echo "   Full Command:  $SSH_CMD"
-          echo "=========================================================="
-          echo ""
-
-          # Add exact Termius fields to Step Summary
-          echo "" >> "$GITHUB_STEP_SUMMARY"
-          echo "### 📱 Enter these exact fields in Termius:" >> "$GITHUB_STEP_SUMMARY"
-          echo "| Termius Field | Value to Enter |" >> "$GITHUB_STEP_SUMMARY"
-          echo "|---|---|" >> "$GITHUB_STEP_SUMMARY"
-          echo "| Hostname / IP | \`$SSH_HOST\` |" >> "$GITHUB_STEP_SUMMARY"
-          echo "| Port | \`$SSH_PORT\` |" >> "$GITHUB_STEP_SUMMARY"
-          echo "| Username | \`$SSH_USER\` |" >> "$GITHUB_STEP_SUMMARY"
-          echo "| Password | *(Leave empty)* |" >> "$GITHUB_STEP_SUMMARY"
-          echo "| SSH Key | *(None)* |" >> "$GITHUB_STEP_SUMMARY"
-          echo "" >> "$GITHUB_STEP_SUMMARY"
-          echo "> ⏳ Session Lifetime: Up to 6 hours. To disconnect and stop the runner, type \`touch /tmp/keepalive_stop\` or cancel the run." >> "$GITHUB_STEP_SUMMARY"
-
-          # Send Discord Notification if Webhook URL is provided
+          # ====================================================================
+          # SECURITY: If Discord Webhook is provided, hide credentials from logs!
+          # ====================================================================
           if [ -n "$DISCORD_WEBHOOK" ]; then
+            # Mask user and command from public logs
+            echo "::add-mask::$SSH_USER"
+            echo "::add-mask::$SSH_CMD"
+
+            echo ""
+            echo "=========================================================="
+            echo "🔒 SECURE MODE ACTIVE (Public Repo Protection)"
+            echo "=========================================================="
+            echo "   ✅ Upterm SSH Tunnel established successfully."
+            echo "   📨 Full Termius connection details sent to Discord!"
+            echo "   🛡️ Credentials and session tokens are HIDDEN from logs"
+            echo "      to prevent strangers on GitHub from hijacking your runner."
+            echo "=========================================================="
+            echo ""
+
+            # Write safe masked summary to GitHub
+            echo "### 🔒 Secure Session Active" >> "$GITHUB_STEP_SUMMARY"
+            echo "Connection credentials have been securely dispatched to your **Discord webhook**." >> "$GITHUB_STEP_SUMMARY"
+            echo "> 🛡️ Details are masked in public logs to keep your runner safe from unauthorized access." >> "$GITHUB_STEP_SUMMARY"
+
+            # Send private details directly to Discord
             curl -s -H "Content-Type: application/json" -X POST -d "{
-              \"content\": \"🚀 GitHub Actions Termius SSH Node Ready!**\\n\\n**Host: \`$SSH_HOST\`\\n**Port:** \`$SSH_PORT\`\\n**User:** \`$SSH_USER\`\\n**Command:** \`$SSH_CMD\`\"
+              \"content\": \"🚀 **GitHub Actions Termius SSH Node Ready!**\\n\\n**Host:** \`$SSH_HOST\`\\n**Port:** \`$SSH_PORT\`\\n**User:** \`$SSH_USER\`\\n**Password:** *(Leave empty)*\\n**Full Command:**\\n\`$SSH_CMD\`\"
             }" "$DISCORD_WEBHOOK" >/dev/null || true
+
+          else
+            # Fallback if no Discord webhook provided
+            echo ""
+            echo "=========================================================="
+            echo "⚠️  WARNING: NO DISCORD WEBHOOK PROVIDED"
+            echo "=========================================================="
+            echo "   Hostname / IP: $SSH_HOST"
+            echo "   Port:          $SSH_PORT"
+            echo "   Username:      $SSH_USER"
+            echo "   Password:      (Leave Empty)"
+            echo "   Full Command:  $SSH_CMD"
+            echo "=========================================================="
+            echo "👉 TIP: Provide a discord_webhook input next time to hide"
+            echo "   these credentials completely from public GitHub logs!"
+            echo "=========================================================="
+            echo ""
+
+            # Add exact Termius fields to Step Summary
+            echo "" >> "$GITHUB_STEP_SUMMARY"
+            echo "### 📱 Enter these exact fields in Termius:" >> "$GITHUB_STEP_SUMMARY"
+            echo "| Termius Field | Value to Enter |" >> "$GITHUB_STEP_SUMMARY"
+            echo "|---|---|" >> "$GITHUB_STEP_SUMMARY"
+            echo "| Hostname / IP | \`$SSH_HOST\` |" >> "$GITHUB_STEP_SUMMARY"
+            echo "| Port | \`$SSH_PORT\` |" >> "$GITHUB_STEP_SUMMARY"
+            echo "| Username | \`$SSH_USER\` |" >> "$GITHUB_STEP_SUMMARY"
+            echo "| Password | *(Leave empty)* |" >> "$GITHUB_STEP_SUMMARY"
+            echo "| SSH Key | *(None)* |" >> "$GITHUB_STEP_SUMMARY"
+            echo "" >> "$GITHUB_STEP_SUMMARY"
+            echo "> ⏳ Session Lifetime: Up to 6 hours. To disconnect and stop the runner, type \`touch /tmp/keepalive_stop\` or cancel the run." >> "$GITHUB_STEP_SUMMARY"
           fi
 
           echo "⏳ Runner is now listening. Waiting for your SSH connection..."
